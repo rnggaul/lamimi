@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  # 1. Database MongoDB
+  mongo:
+    image: mongo:7.0
+    container_name: lamimi_mongo
+    restart: always
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - lamimi_net
+    # Port 27017 sengaja TIDAK di-expose ke host/publik demi keamanan
+
+  # 2. Backend FastAPI
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: lamimi_backend
+    restart: always
+    env_file:
+      - ./backend/.env
+    environment:
+      - MONGO_URL=mongodb://mongo:27017
+      - DB_NAME=lamimi_production
+    volumes:
+      - ./backend/uploads:/app/uploads
+    depends_on:
+      - mongo
+    networks:
+      - lamimi_net
+    # Port 8001 sengaja TIDAK di-expose ke host/publik
+
+  # 3. Frontend React (Nginx Internal)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: lamimi_frontend
+    restart: always
+    depends_on:
+      - backend
+    networks:
+      - lamimi_net
+
+  # 4. Main Nginx Reverse Proxy (Pintu Masuk Utama)
+  nginx:
+    image: nginx:alpine
+    container_name: lamimi_nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./backend/uploads:/var/www/uploads:ro
+      - certbot_conf:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - lamimi_net
+
+networks:
+  lamimi_net:
+    driver: bridge
+
+volumes:
+  mongo_data:
+  certbot_conf:
+  certbot_www:
